@@ -1,0 +1,154 @@
+
+
+[
+  {
+    "date": "20250101",
+    "week": "三",
+    "isHoliday": true,
+    "description": "元旦"
+  },
+  {
+    "date": "20250201",
+    "week": "六",
+    "isHoliday": false,
+    "description": "補班"
+  },
+  {
+    "date": "20250203",
+    "week": "一",
+    "isHoliday": true,
+    "description": "春節假期"
+  },
+  {
+    "date": "20250204",
+    "week": "二",
+    "isHoliday": true,
+    "description": "春節假期"
+  },
+  {
+    "date": "20250205",
+    "week": "三",
+    "isHoliday": true,
+    "description": "春節假期（除夕）"
+  },
+  {
+    "date": "20250206",
+    "week": "四",
+    "isHoliday": true,
+    "description": "春節假期（初一）"
+  },
+  {
+    "date": "20250207",
+    "week": "五",
+    "isHoliday": true,
+    "description": "春節假期"
+  },
+  {
+    "date": "20250208",
+    "week": "六",
+    "isHoliday": true,
+    "description": "春節假期"
+  },
+  {
+    "date": "20250209",
+    "week": "日",
+    "isHoliday": true,
+    "description": "春節假期"
+  },
+  {
+    "date": "20250228",
+    "week": "五",
+    "isHoliday": true,
+    "description": "和平紀念日"
+  },
+  {
+    "date": "20250301",
+    "week": "六",
+    "isHoliday": true,
+    "description": "和平紀念日連假"
+  },
+  {
+    "date": "20250302",
+    "week": "日",
+    "isHoliday": true,
+    "description": "和平紀念日連假"
+  },
+  {
+    "date": "20250404",
+    "week": "五",
+    "isHoliday": true,
+    "description": "兒童節、清明節"
+  },
+  {
+    "date": "20250405",
+    "week": "六",
+    "isHoliday": true,
+    "description": "兒童節、清明節連假"
+  },
+  {
+    "date": "20250406",
+    "week": "日",
+    "isHoliday": true,
+    "description": "兒童節、清明節連假"
+  },
+  {
+    "date": "20250407",
+    "week": "一",
+    "isHoliday": true,
+    "description": "兒童節、清明節連假"
+  },
+  {
+    "date": "20250517",
+    "week": "六",
+    "isHoliday": false,
+    "description": "補班"
+  },
+  {
+    "date": "20250530",
+    "week": "五",
+    "isHoliday": true,
+    "description": "端午節"
+  },
+  {
+    "date": "20250531",
+    "week": "六",
+    "isHoliday": true,
+    "description": "端午節連假"
+  },
+  {
+    "date": "20250601",
+    "week": "日",
+    "isHoliday": true,
+    "description": "端午節連假"
+  },
+  {
+    "date": "20250906",
+    "week": "六",
+    "isHoliday": false,
+    "description": "補班"
+  },
+  {
+    "date": "20250908",
+    "week": "一",
+    "isHoliday": true,
+    "description": "中秋節"
+  },
+  {
+    "date": "20251010",
+    "week": "五",
+    "isHoliday": true,
+    "description": "國慶日"
+  },
+  {
+    "date": "20251011",
+    "week": "六",
+    "isHoliday": true,
+    "description": "國慶日連假"
+  },
+  {
+    "date": "20251012",
+    "week": "日",
+    "isHoliday": true,
+    "description": "國慶日連假"
+  }
+]

@@ -1,0 +1,74 @@
+[
+  {
+    "date": "20260101",
+    "week": "四",
+    "isHoliday": true,
+    "description": "元旦"
+  },
+  {
+    "date": "20260228",
+    "week": "六",
+    "isHoliday": true,
+    "description": "和平紀念日"
+  },
+  {
+    "date": "20260402",
+    "week": "四",
+    "isHoliday": true,
+    "description": "兒童節補假"
+  },
+  {
+    "date": "20260403",
+    "week": "五",
+    "isHoliday": true,
+    "description": "清明節"
+  },
+  {
+    "date": "20260501",
+    "week": "五",
+    "isHoliday": true,
+    "description": "勞動節"
+  },
+  {
+    "date": "20260619",
+    "week": "五",
+    "isHoliday": true,
+    "description": "端午節"
+  },
+  {
+    "date": "20260928",
+    "week": "一",
+    "isHoliday": true,
+    "description": "教師節"
+  },
+  {
+    "date": "20261001",
+    "week": "四",
+    "isHoliday": true,
+    "description": "中秋節"
+  },
+  {
+    "date": "20261010",
+    "week": "六",
+    "isHoliday": true,
+    "description": "國慶日"
+  },
+  {
+    "date": "20260124",
+    "week": "六",
+    "isHoliday": false,
+    "description": "補班"
+  },
+  {
+    "date": "20260411",
+    "week": "六",
+    "isHoliday": false,
+    "description": "補班"
+  },
+  {
+    "date": "20260912",
+    "week": "六",
+    "isHoliday": false,
+    "description": "補班"
+  }
+]
