@@ -457,7 +457,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 加入 LXGW WenKai Mono TC 字體
   const fontLink = document.createElement("link");
   fontLink.rel = "stylesheet";
-  fontLink.href = "https://cdn.jsdelivr.net/gh/lxgw/LXGWWenKai@latest/dist/font-css/LXGW WenKai Mono TC.css";
+  fontLink.href = "https://cdn.jsdelivr.net/gh/lxgw/LXGWWenKai@latest/dist/font-css/LXGWWenKaiMonoTC.css";
   document.head.appendChild(fontLink);
   document.head.appendChild(style);
   // 先讀取 Google 表單回覆，初始化人員與預班設定
@@ -743,7 +743,7 @@ const roleAssignmentLimits = {
   "R3": 7,
   "F1": 6,
   "F2": 5,
-  "Vs": 2
+  "VS": 2
 };
 // 每個職稱的區域優先順序
 const roleZonePriority = {
