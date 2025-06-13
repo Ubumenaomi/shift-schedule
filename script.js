@@ -1,3 +1,42 @@
+// 互斥排班：指定成員不可同一天排班
+const mutuallyExclusivePairs = [
+];
+// 儲存互斥對到 localStorage
+function saveExclusions() {
+  localStorage.setItem("mutuallyExclusivePairs", JSON.stringify(mutuallyExclusivePairs));
+}
+
+// 從 localStorage 讀回互斥對
+function loadExclusions() {
+  const raw = localStorage.getItem("mutuallyExclusivePairs");
+  if (raw) {
+    const arr = JSON.parse(raw);
+    mutuallyExclusivePairs.length = 0;       // 清空原本
+    arr.forEach(pair => mutuallyExclusivePairs.push(pair));
+  }
+}
+// 填充 A、B 下拉選單
+function refreshExclusionOptions() {
+  const staffItems = document.querySelectorAll("#staff-list > ul li");
+  if (staffItems.length === 0 && mutuallyExclusivePairs.length > 0) {
+    mutuallyExclusivePairs.length = 0;
+    saveExclusions();
+  }
+
+  const p1 = document.getElementById("excl-person1");
+  const p2 = document.getElementById("excl-person2");
+  [p1, p2].forEach(sel => {
+    if (!sel) return;
+    sel.innerHTML = '<option value="">-- 請選擇 --</option>';
+    document.querySelectorAll("#staff-list > ul li").forEach(li => {
+      const opt = document.createElement("option");
+      opt.value = li.textContent;
+      opt.textContent = li.textContent;
+      sel.appendChild(opt);
+    });
+  });
+}
+
 // 處理交換與驗證邏輯 (複用給拖放和觸控)
 function handleDrop(dstCell) {
   if (!dragSrcCell || dragSrcCell === dstCell) return;
@@ -40,6 +79,19 @@ function handleDrop(dstCell) {
       .reduce((sum, r) => sum + Array.from(r.querySelectorAll("td")).slice(1)
         .filter(c => c.textContent.trim() === name).length, 0);
     if (count > limit) return `${name} 超過本月上限`;
+    // 互斥檢查：同一天同一行若已有互斥對象，則排不進來
+    const rowNames = Array.from(cell.parentElement.querySelectorAll("td"))
+     .slice(1)
+     .map(c => c.textContent.trim())
+     .filter(n => n);
+    for (const [a, b] of mutuallyExclusivePairs) {
+      if (name === a && rowNames.includes(b)) {
+        return `${a} 與 ${b} 不能同一天排班`;
+      }
+      if (name === b && rowNames.includes(a)) {
+        return `${b} 與 ${a} 不能同一天排班`;
+      }
+    }
 
     // --- 插入：同日多區域檢查（同一天同人不可重複） ---
     const rowCells = cell.parentElement.querySelectorAll("td");
@@ -207,6 +259,8 @@ async function loadFormResponses() {
     // 資料載入完成後，更新下拉選單與預班清單
     refreshOffStaffOptions();
     renderOffDaysList();
+    refreshExclusionOptions();
+    renderExclusionList();
   } catch (err) {
     console.error("載入表單回覆失敗", err);
   }
@@ -236,21 +290,49 @@ function renderOffDaysList() {
   }
 
   entries.forEach(([name, dates]) => {
-    const weekdays = Array.isArray(dates.weekdays) ? dates.weekdays : [];
-    const weekends = Array.isArray(dates.weekends) ? dates.weekends : [];
+    const allDates = Array.isArray(dates.offDates) ? dates.offDates : [];
+    const weekdays = [], weekends = [];
+    allDates.forEach(d => {
+      const dow = new Date(d).getDay();
+      if (dow === 0 || dow === 6) weekends.push(d);
+      else weekdays.push(d);
+    });
+
+    const wkHtml = weekdays.length
+      ? weekdays.map(d => `<span class="off-date weekday" data-name="${name}" data-date="${d}">${d}</span>`).join('、')
+      : '無';
+    const weHtml = weekends.length
+      ? weekends.map(d => `<span class="off-date weekend" data-name="${name}" data-date="${d}">${d}</span>`).join('、')
+      : '無';
+
     const p = document.createElement("p");
-    // 生成可雙擊移除的日期 span
-    const wkHtml = weekdays.map(d => 
-      `<span class="off-date weekday" data-name="${name}" data-date="${d}">${d}</span>`
-    ).join('、');
-    const weHtml = weekends.map(d => 
-      `<span class="off-date weekend" data-name="${name}" data-date="${d}">${d}</span>`
-    ).join('、');
     p.innerHTML = `${name}：平日休 ${wkHtml}；週末休 ${weHtml}`;
     container.appendChild(p);
   });
 }
 
+// 渲染互斥排班列表
+function renderExclusionList() {
+  const container = document.getElementById("exclusion-list");
+  if (!container) return;
+  container.innerHTML = "";
+  mutuallyExclusivePairs.forEach(([a, b], idx) => {
+    const div = document.createElement("div");
+    div.innerHTML = `<span>${a}</span> 🔒 <span>${b}</span>`;
+    // 雙擊移除
+    div.addEventListener("dblclick", () => {
+      if (confirm(`移除 ${a} 與 ${b} 的互斥設定？`)) {
+        mutuallyExclusivePairs.splice(idx, 1);
+        saveExclusions();
+        renderExclusionList();
+      }
+    });
+    container.appendChild(div);
+  });
+  if (mutuallyExclusivePairs.length === 0) {
+    container.textContent = "尚無互斥設定";
+  }
+}
 
 // 更新「預班（休假）設定」的選擇清單
 function refreshOffStaffOptions() {
@@ -262,6 +344,7 @@ function refreshOffStaffOptions() {
     opt.value = li.textContent;
     opt.textContent = li.textContent;
     offSelect.appendChild(opt);
+    refreshExclusionOptions();
   });
 }
 
@@ -324,9 +407,96 @@ async function loadHolidayData(year) {
     }
   }
 }
+/**
+ * 綁定「預班（休假）設定」面板的 change / click 事件
+ * @param {flatpickr.Instance} offDayPicker - flatpickr 多選日曆實例
+ */
+function bindOffDayEvents(offDayPicker) {
+  // 1. 人員下拉選擇切換時，把 reservedOffDates 內的日期丟到 flatpickr
+  document
+    .getElementById("off-staff-select")
+    .addEventListener("change", e => {
+      const name = e.target.value;
+      const off = reservedOffDates[name] || { weekdays: [], weekends: [] };
+      // Merge 兩組日期
+      const dates = (off.offDates  
+                     || ((off.weekdays||[]).concat(off.weekends||[])))  
+                   .map(d => d.trim());
+      offDayPicker.setDate(dates, true);
+    });
 
+  // 2. 按「儲存」時，把 flatpickr 選的日期寫回 reservedOffDates，並 render
+  document
+    .getElementById("set-off-days")
+    .addEventListener("click", () => {
+      const name = document.getElementById("off-staff-select").value;
+      if (!name) {
+        return alert("請先選擇人員");
+      }
+      const dates = offDayPicker.selectedDates.map(d => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+      });
+      reservedOffDates[name] = { offDates: dates };
+      renderOffDaysList();
+      alert(`${name} 的預班日期已更新`);
+    });
+}
+
+ //切換「設定禁用格」模式，並更新按鈕文字
+function toggleSelectionMode() {
+  selectionMode = !selectionMode;
+  const btn = document.getElementById("set-disabled-button");
+  if (!btn) return;
+  btn.textContent = selectionMode ? "結束設定禁用" : "設定禁用格";
+}
+/**
+ * 讀取目前排班表，產生 CSV 格式並下載
+ */
+function exportToCSV() {
+  // 1. 取得 header row
+  const headers = Array.from(document.querySelectorAll("#schedule thead th"))
+    .map(th => `"${th.textContent.trim()}"`)
+    .join(",");
+  // 2. 取得 body rows
+  const rows = Array.from(document.querySelectorAll("#schedule tbody tr"))
+    .map(tr =>
+      Array.from(tr.querySelectorAll("td"))
+        .map(td => `"${td.textContent.trim()}"`)
+        .join(",")
+    );
+  // 3. 組成檔案內容
+  const csvContent = [headers, ...rows].join("\n");
+  // 4. 觸發下載
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `schedule_${currentYear}_${String(currentMonth).padStart(2,"0")}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+/**
+ * 用 SheetJS (XLSX.js) 讀取 table，並下載成 .xlsx
+ */
+function exportToExcel() {
+  const table = document.getElementById("schedule");
+  // 把 table 轉成 workbook
+  const wb = XLSX.utils.table_to_book(table, { sheet: "排班" });
+  // 下載檔案
+  XLSX.writeFile(
+    wb,
+    `schedule_${currentYear}_${String(currentMonth).padStart(2,"0")}.xlsx`
+  );
+}
 // 🛠 等到網頁載入完，先抓台灣假日，再產生排班表
 window.addEventListener("DOMContentLoaded", async () => {
+  console.log("DOM loaded");
+   loadExclusions();
   // 自動設定為下一個月份
   const today = new Date();
   let year = today.getFullYear();
@@ -460,28 +630,43 @@ window.addEventListener("DOMContentLoaded", async () => {
   fontLink.href = "https://cdn.jsdelivr.net/gh/lxgw/LXGWWenKai@latest/dist/font-css/LXGW WenKai Mono TC.css";
   document.head.appendChild(fontLink);
   document.head.appendChild(style);
-  // 先讀取 Google 表單回覆，初始化人員與預班設定
+   // ← 將這三行放進來，就不會跑錯
   await loadFormResponses();
-  await loadHolidayData(currentYear);   // 先去 fetch 假日資料
-  generateSchedule(currentYear, currentMonth);     // 抓到資料後再產生排班表
-  // 新增自動排班按鈕
-  const genBtn = document.getElementById("generate-button");
-  const autoBtn = document.createElement("button");
-  autoBtn.id = "auto-schedule-button";
-  autoBtn.textContent = "自動排班";
-  genBtn.insertAdjacentElement("afterend", autoBtn);
-  // 新增：設定禁用格 按鈕
-  const blockBtn = document.createElement("button");
-  blockBtn.id = "block-button";
-  blockBtn.textContent = "設定禁用格";
-  genBtn.insertAdjacentElement("afterend", blockBtn);
-  blockBtn.addEventListener("click", () => {
-    selectionMode = !selectionMode;
-    blockBtn.textContent = selectionMode ? "結束設定禁用" : "設定禁用格";
-  });
-  // 綁定自動排班按鈕事件
-  document.getElementById("auto-schedule-button").addEventListener("click", autoAssign);
+  await loadHolidayData(currentYear);
+  generateSchedule(currentYear, currentMonth);
 
+  const offDayPicker = flatpickr("#off-days-picker", {
+  mode: "multiple",
+  dateFormat: "Y-m-d",
+  onChange(selectedDates, dateStr, instance) {
+    if (selectedDates.length > 8) {
+      instance.setDate(selectedDates.slice(0, 8), true);
+      alert("最多只能選擇 8 天");
+      }
+    }
+  });
+    bindOffDayEvents(offDayPicker);
+  // 當人員下拉選擇改變時，將該人已有的預班日帶入日曆
+  document.getElementById("off-staff-select").addEventListener("change", e => {
+    const name = e.target.value;
+    const off = reservedOffDates[name] || { offDates: [] };
+    // 若你之前的資料結構是 { weekdays: [], weekends: [] }，
+    // 可以改成 offDates: [...兩者合併...]，或這裡做合併：
+    const dates = off.offDates ||
+                  ((off.weekdays || []).concat(off.weekends || []));
+    offDayPicker.setDate(dates, true);
+  });
+
+   // 最後，預設呼叫一次，顯示現有資料
+  refreshOffStaffOptions();
+  renderOffDaysList();
+
+  // 綁定自動排班按鈕事件
+  document.getElementById("auto-schedule").addEventListener("click", autoAssign);
+  document.getElementById("generate-button").addEventListener("click", () => generateSchedule(currentYear, currentMonth));
+  document.getElementById("set-disabled-button").addEventListener("click", toggleSelectionMode);
+  document.getElementById("export-excel").addEventListener("click", exportToExcel);
+  document.getElementById("export-csv").addEventListener("click", exportToCSV);
   // ---- 新增版本儲存/載入功能 ----
   const staffListDiv = document.getElementById("staff-list");
   const versionsDiv = document.createElement("div");
@@ -496,19 +681,24 @@ window.addEventListener("DOMContentLoaded", async () => {
       </div>`
     ).join("")}
   `;
-  // staffListDiv.insertAdjacentElement("afterend", versionsDiv);
+    // （D）最後，插入週末 & 本月排班摘要面板
+  if (staffListDiv && !document.getElementById("weekend-summary")) {
+    const summaryDiv = document.createElement("div");
+    summaryDiv.id = "weekend-summary";
+    summaryDiv.style.marginTop  = "1em";
+    summaryDiv.style.fontSize   = "0.9em";
+    staffListDiv.appendChild(summaryDiv);
+  }
 
   // 將排班版本區塊移到排班表下方
   const scheduleTable = document.getElementById("schedule");
   scheduleTable.insertAdjacentElement("afterend", versionsDiv);
-
-  // 新增匯出CSV按鈕
+ // 新增匯出CSV按鈕
   const exportBtn = document.createElement("button");
   exportBtn.id = "export-csv-button";
   exportBtn.textContent = "匯出排班 (CSV)";
   // 將按鈕插入在排班表下方
   scheduleTable.insertAdjacentElement("afterend", exportBtn);
-
   exportBtn.addEventListener("click", () => {
     // 取得表格標題
     const headers = Array.from(document.querySelectorAll("#schedule thead th"))
@@ -532,7 +722,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   });
-
   // 新增匯出Excel按鈕
   const exportXlsxBtn = document.createElement("button");
   exportXlsxBtn.id = "export-xlsx-button";
@@ -545,119 +734,127 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 下載 xlsx 檔
     XLSX.writeFile(wb, `schedule_${currentYear}_${String(currentMonth).padStart(2,"0")}.xlsx`);
   });
+  // 儲存／載入排班版本到 localStorage
+versionsDiv.addEventListener("click", e => {
+  const btn = e.target;
+  const v = btn.dataset.version;
+  const key = `schedule_v${v}`;
+  // 只處理我們定義的按鈕
+  if (!btn.classList.contains("save-version") && !btn.classList.contains("load-version")) {
+    return;
+  }
 
-  // 儲存當前排班到 localStorage
-  versionsDiv.addEventListener("click", e => {
-    const btn = e.target;
-    if (btn.classList.contains("save-version")) {
-      const v = btn.dataset.version;
-      const data = Array.from(scheduleTableBody.querySelectorAll("tr")).map(row =>
-        Array.from(row.querySelectorAll("td")).map(cell => cell.textContent.trim())
-      );
-      localStorage.setItem(`schedule_v${v}`, JSON.stringify(data));
-      alert(`已儲存為版本 ${v}`);
-    } else if (btn.classList.contains("load-version")) {
-      const v = btn.dataset.version;
-      const json = localStorage.getItem(`schedule_v${v}`);
-      if (!json) return alert(`版本 ${v} 尚未儲存`);
-      const data = JSON.parse(json);
-      // 清空表格
-      scheduleTableBody.querySelectorAll("tr").forEach((row, i) => {
-        const cells = row.querySelectorAll("td");
-        data[i].forEach((text, j) => {
-          cells[j].textContent = text;
-        });
+  if (btn.classList.contains("save-version")) {
+    // 1) 收集 staff 清單
+    const staff = Array.from(
+      document.querySelectorAll("#staff-list ul li")
+    ).map(li => li.textContent);
+
+    // 2) 收集休假設定 off
+    const off = JSON.parse(JSON.stringify(reservedOffDates));
+
+    // 3) 收集互斥設定 excl
+    const excl = JSON.parse(JSON.stringify(mutuallyExclusivePairs));
+
+    // 4) 收集排班表 rows
+    const rows = Array.from(
+      document.querySelectorAll("#schedule tbody tr")
+    ).map(tr =>
+      Array.from(tr.querySelectorAll("td"))
+        .map(td => td.textContent.trim())
+    );
+
+    // 5) 一起存進 localStorage
+    localStorage.setItem(key, JSON.stringify({ staff, off, excl, rows }));
+    alert(`✅ 已儲存版本 ${v}`);
+
+  } else if (btn.classList.contains("load-version")) {
+    const raw = localStorage.getItem(key);
+    if (!raw) {
+      return alert(`⚠️ 版本 ${v} 尚未儲存`);
+    }
+
+    // 解構出所有狀態
+    const { staff, off, excl, rows } = JSON.parse(raw);
+
+    // —— 還原人員清單 ——
+    const staffUl = document.querySelector("#staff-list > ul");
+    staffUl.innerHTML = "";
+    staff.forEach(name => {
+      const li = document.createElement("li");
+      li.textContent = name;
+      staffUl.appendChild(li);
+    });
+
+    // —— 還原休假設定 off ——
+    // 先清空原有，再灌入新值
+    Object.keys(reservedOffDates).forEach(k => delete reservedOffDates[k]);
+    Object.assign(reservedOffDates, off);
+
+    // —— 還原互斥設定 excl ——
+    mutuallyExclusivePairs.length = 0;
+    excl.forEach(pair => mutuallyExclusivePairs.push(pair));
+
+    // —— 還原排班表 rows ——
+    const tbody = document.querySelector("#schedule tbody");
+    tbody.innerHTML = "";
+    rows.forEach(cols => {
+      const tr = document.createElement("tr");
+      cols.forEach(text => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        tr.appendChild(td);
       });
-      renderWeekendSummary();
-      alert(`已載入版本 ${v}`);
-    }
-  });
-  // ---- 版本儲存/載入結束 ----
+      tbody.appendChild(tr);
+    });
 
-  // 在 staff-list 底下加一個 off-days panel
-  const offDiv = document.createElement("div");
-  offDiv.id = "off-days";
-  offDiv.style.margin = "1em 0";
-  offDiv.innerHTML = `
-    <h3>預班（休假）設定</h3>
-    <label>選擇人員：
-      <select id="off-staff-select">
-        <option value="">-- 請選擇 --</option>
-      </select>
+    // —— 重新啟用互動功能 & 更新 UI ——
+    enableDragDrop();
+    sortStaffList();
+    refreshOffStaffOptions();
+    renderOffDaysList();
+    refreshExclusionOptions();
+    renderExclusionList();
+    renderWeekendSummary();
+
+    alert(`✅ 已載入版本 ${v}`);
+  }
+});
+
+  // 新增互斥排班設定面板
+  const exclDiv = document.createElement("div");
+  exclDiv.id = "exclusion-panel";
+  exclDiv.style.margin = "1em 0";
+  exclDiv.innerHTML = `
+    <h3>互斥排班設定</h3>
+    <label>人員 A：
+      <select id="excl-person1"><option value="">-- 請選擇 --</option></select>
     </label>
-    <label>平日休1：
-      <input type="date" id="weekday-off-1" />
+    <label>人員 B：
+      <select id="excl-person2"><option value="">-- 請選擇 --</option></select>
     </label>
-    <label>平日休2：
-      <input type="date" id="weekday-off-2" />
-    </label>
-    <label>週末休1：
-      <input type="date" id="weekend-off-1" />
-    </label>
-    <label>週末休2：
-      <input type="date" id="weekend-off-2" />
-    </label>
-    <label>週末休3：
-      <input type="date" id="weekend-off-3" />
-    </label>
-    <label>週末休4：
-      <input type="date" id="weekend-off-4" />
-    </label>
-    <button id="set-off-days">儲存</button>
-    <div id="off-days-list" style="margin-top:.5em;font-size:0.9em"></div>
+    <button id="add-exclusion">🔒 綁定</button>
+    <div id="exclusion-list" style="margin-top:0.5em;font-size:0.9em"></div>
   `;
-  staffListDiv.appendChild(offDiv);
-  // 更新下拉與綁定事件
-  refreshOffStaffOptions();
-  document.getElementById("off-staff-select").addEventListener("change", e => {
-    const name = e.target.value;
-    const offs = reservedOffDates[name] || { weekdays: [], weekends: [] };
-    document.getElementById("weekday-off-1").value = offs.weekdays[0] || "";
-    document.getElementById("weekday-off-2").value = offs.weekdays[1] || "";
-    document.getElementById("weekend-off-1").value = offs.weekends[0] || "";
-    document.getElementById("weekend-off-2").value = offs.weekends[1] || "";
-    document.getElementById("weekend-off-3").value = offs.weekends[2] || "";
-    document.getElementById("weekend-off-4").value = offs.weekends[3] || "";
-  });
-  document.getElementById("set-off-days").addEventListener("click", () => {
-    const name = document.getElementById("off-staff-select").value;
-    if (!name) {
-      alert("請先選擇人員");
-      return;
+  staffListDiv.appendChild(exclDiv);
+  refreshExclusionOptions();
+  renderExclusionList();
+
+  document.getElementById("add-exclusion").addEventListener("click", () => {
+    const a = document.getElementById("excl-person1").value;
+    const b = document.getElementById("excl-person2").value;
+    if (!a || !b || a === b) {
+      return alert("請選擇兩個不同的人員");
     }
-    // 合併保留既有設定，只更新輸入的部分，可輸入最多兩個平日、四個週末
-    const off = reservedOffDates[name] || { weekdays: [], weekends: [] };
-    // 讀取所有平日輸入
-    const wd1 = document.getElementById("weekday-off-1").value;
-    const wd2 = document.getElementById("weekday-off-2").value;
-    off.weekdays = [wd1, wd2].filter(v => v);
-    // 讀取所有週末輸入
-    const we1 = document.getElementById("weekend-off-1").value;
-    const we2 = document.getElementById("weekend-off-2").value;
-    const we3 = document.getElementById("weekend-off-3").value;
-    const we4 = document.getElementById("weekend-off-4").value;
-    off.weekends = [we1, we2, we3, we4].filter(v => v);
-    reservedOffDates[name] = off;
-    renderOffDaysList();
-    alert(`${name} 的預班日期已更新`);
-  });
-  // 立刻渲染載入的預班設定列表
-  renderOffDaysList();
-  // 雙擊側邊預班日期以取消該日期
-  document.getElementById("off-days-list").addEventListener("dblclick", e => {
-    const span = e.target;
-    if (!span.classList.contains("off-date")) return;
-    const name = span.dataset.name;
-    const date = span.dataset.date;
-    if (!confirm(`確定要取消 ${name} 的 ${date} 預班嗎？`)) return;
-    const off = reservedOffDates[name];
-    if (span.classList.contains("weekday")) {
-      off.weekdays = off.weekdays.filter(d => d !== date);
-    } else {
-      off.weekends = off.weekends.filter(d => d !== date);
+    if (mutuallyExclusivePairs.some(p => (p[0] === a && p[1] === b) || (p[0] === b && p[1] === a))) {
+      return alert("此互斥設定已存在");
     }
-    renderOffDaysList();
+    mutuallyExclusivePairs.push([a, b]);
+    saveExclusions();
+    renderExclusionList();
+    alert(`已設定 ${a} 與 ${b} 不可同一天排班`);
   });
+
   // 在 staff-list 底下插入排班摘要
   if (staffListDiv && !document.getElementById("weekend-summary")) {
     const summaryDiv = document.createElement("div");
@@ -670,7 +867,28 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // 確保載入後重新渲染一次排班摘要
   renderWeekendSummary();
+  sortStaffList();
+  refreshOffStaffOptions();
+  renderOffDaysList();
+  refreshExclusionOptions();
+  renderExclusionList();
+  renderWeekendSummary();
+  // ——— 新增：週末 & 本月排班摘要面板 ———
+  if (staffListDiv) {
+    // 如果還沒建立過，就動態掛一個 <div id="weekend-summary">
+    let summaryDiv = document.getElementById("weekend-summary");
+    if (!summaryDiv) {
+      summaryDiv = document.createElement("div");
+      summaryDiv.id = "weekend-summary";
+      summaryDiv.style.marginTop = "1em";
+      summaryDiv.style.fontSize = "0.9em";
+      staffListDiv.appendChild(summaryDiv);
+    }
+    // 呼叫一次，渲染初始摘要
+    renderWeekendSummary();
+  }
 });
+
 // 選取目前網頁上已經存在的元素
 const scheduleCells = document.querySelectorAll("#schedule td");
 
@@ -815,14 +1033,21 @@ scheduleTableBody.addEventListener("click", (event) => {
       // 休假檢查：若無設定則視為可排
       const dateCellOff = event.target.parentElement.querySelector("td:first-child");
       const dateStrOff = dateCellOff.textContent.split(" ")[0];
-      const off = reservedOffDates[selectedName] || { weekdays: [], weekends: [] };
-      if (off.weekdays.includes(dateStrOff) || off.weekends.includes(dateStrOff)) {
-        alert(`${selectedName} 已設定 ${dateStrOff} 為休假日，無法排班`);
-        return;
-      }
+    
       // —— 阻擋檢查結束 ——
       // 1. 收集所有排班表的列，以便後續「防連續值班」檢查使用
       const rows = Array.from(scheduleTableBody.querySelectorAll("tr"));
+      const entry = reservedOffDates[selectedName] || {};
+      const allOff = Array.isArray(entry.offDates)
+        ? entry.offDates
+        : [
+            ...(Array.isArray(entry.weekdays) ? entry.weekdays : []),
+            ...(Array.isArray(entry.weekends) ? entry.weekends : [])
+          ];
+      if (allOff.includes(dateStrOff)) {
+        alert(`${selectedName} 已設定 ${dateStrOff} 為休假日，無法排班`);
+        return;
+      }
 
       // 取得欄位名稱
       const columnIndex = event.target.cellIndex;
@@ -1028,10 +1253,8 @@ addStaffButton.addEventListener("click", () => {
     // 同步更新「預班（休假）設定」的選擇清單
     const offSelect = document.getElementById("off-staff-select");
     if (offSelect) {
-      const opt = document.createElement("option");
-      opt.value = fullName;
-      opt.textContent = fullName;
-      offSelect.appendChild(opt);
+      refreshOffStaffOptions();
+      refreshExclusionOptions();
     }
   
     // (不需要個別綁定，新li自動透過事件委派被監聽)
@@ -1301,6 +1524,16 @@ function autoAssign() {
         // 若此格被禁用，略過
         const key = `${dateStr}|${zoneName}`;
         if (forbiddenCells.has(key)) continue;
+        // 互斥檢查
+        const assignedNames = Object.values(zoneCells)
+          .map(c => c.textContent.trim())
+          .filter(n => n);
+        let blocked = false;
+        for (const [a, b] of mutuallyExclusivePairs) {
+          if (name === a && assignedNames.includes(b)) blocked = true;
+          if (name === b && assignedNames.includes(a)) blocked = true;
+        }
+        if (blocked) continue;
         const cell = zoneCells[zoneName];
         if (cell && cell.textContent.trim() === "") {
           cell.textContent = name;

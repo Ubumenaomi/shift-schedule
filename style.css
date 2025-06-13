@@ -16,15 +16,6 @@ body {
     padding: 1em;
   }
   
-  #staff-list {
-    width: 20%;
-    margin-right: 2em;
-  }
-  
-  #schedule-table {
-    width: 70%;
-  }
-  
   table {
     width: 100%;
     border-collapse: collapse;
@@ -35,4 +26,64 @@ body {
     padding: 0.5em;
     text-align: center;
   }
-  
+  /* ─── 主框架 ─── */
+#main-container {
+  display: flex;
+  height: calc(100vh - 2em);
+  gap: 1rem;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+#sidebar {
+  flex: 0 0 260px;          /* 固定寬度 */
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;         /* 側欄可捲動 */
+  background: #f5f5f5;
+}
+/* ─── 控制面板 ─── */
+#sidebar section {
+  padding: 0.75rem;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+#sidebar h2, #sidebar h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+/* ─── 表單元件滿版 ─── */
+#sidebar label {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+#sidebar select,
+#sidebar input,
+#sidebar button {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.25rem;
+}
+/* ─── 排班表區域 ─── */
+#schedule-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#schedule-wrapper {
+  flex: 1;
+  overflow: auto;
+}
+#schedule {
+  min-width: 800px;   /* 視欄位數量調整 */
+  width: 100%;
+  border-collapse: collapse;
+}
+#schedule th, #schedule td {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  text-align: center;
+  white-space: nowrap;
+}
