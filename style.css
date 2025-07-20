@@ -87,3 +87,13 @@ body {
   text-align: center;
   white-space: nowrap;
 }
+
+/* 假日與週末樣式 */
+tr.holiday {
+  background-color: #e9967a !important; /* 淡紅色底 */
+  color: #120404 !important;            /* 深紅文字 */
+}
+
+tr.weekend {
+  background-color:  #e9967a 2 !important; /* 淡灰底 */
+}

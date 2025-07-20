@@ -1,3 +1,48 @@
+// --- 調整排班數功能 ---
+const maxShiftsPerPerson = {};
+let selectedPerson = null;
+
+// 新增「調整排班數」按鈕
+const adjustButton = document.createElement("button");
+adjustButton.textContent = "調整排班數";
+adjustButton.onclick = () => {
+  document.body.classList.toggle("adjusting-mode");
+  // 清除調整面板
+  if (!document.body.classList.contains("adjusting-mode")) {
+    const ap = document.getElementById("adjust-panel");
+    if (ap) ap.remove();
+    selectedPerson = null;
+  }
+};
+document.body.appendChild(adjustButton);
+
+// 新增 CSS 樣式: 鎖定狀態下所有排班格無法互動
+const adjustStyle = document.createElement("style");
+adjustStyle.textContent = `
+body.adjusting-mode td:not(.summary-cell) {
+  pointer-events: none;
+  opacity: 0.3;
+}
+#adjust-panel {
+  position: fixed;
+  top: 40%;
+  right: 2em;
+  background: #fff;
+  border: 2px solid #7cc;
+  border-radius: 10px;
+  padding: 1em 1.5em;
+  z-index: 1000;
+  box-shadow: 0 6px 24px #0001;
+  font-size: 1.2em;
+}
+#adjust-panel button {
+  font-size: 1.2em;
+  margin: 0 0.5em;
+}
+`;
+document.head.appendChild(adjustStyle);
+// 支援撤銷功能的堆疊
+const undoStack = [];
 // 互斥排班：指定成員不可同一天排班
 const mutuallyExclusivePairs = [
 ];
@@ -40,8 +85,11 @@ function refreshExclusionOptions() {
 // 處理交換與驗證邏輯 (複用給拖放和觸控)
 function handleDrop(dstCell) {
   if (!dragSrcCell || dragSrcCell === dstCell) return;
-  // 收集來源/目標資訊
+  // 儲存舊狀態以支援撤銷
   const srcCell = dragSrcCell;
+  const dstCell_ = dstCell;
+  const oldSrc = srcCell.textContent;
+  const oldDst = dstCell.textContent;
   const srcName = srcCell.textContent.trim();
   const dstName = dstCell.textContent.trim();
 
@@ -57,7 +105,7 @@ function handleDrop(dstCell) {
     if (forbiddenCells.has(`${date}|${zone}`)) return `${name} 在 ${date} ${zone} 已被禁止`;
     // 權限檢查
     const role = name.split(" ")[0];
-    if (!zonePermissions[role].includes(zone)) return `${name} 無法排入 ${zone}`;
+    if (!zonePermissions[role] || !zonePermissions[role].includes(zone)) return `${name} 無法排入 ${zone}`;
     // 休假檢查
     const off = reservedOffDates[name] || { weekdays: [], weekends: [] };
     if (off.weekdays.includes(date) || off.weekends.includes(date)) return `${name} 已設定 ${date} 為休假`;
@@ -140,14 +188,23 @@ function handleDrop(dstCell) {
     return null;
   }
 
-  // 分別驗證來源與目標
+  // 分別驗證來源與目標 (交換後驗證)
   const err1 = srcName ? validate(dstCell, srcName) : null;
   const err2 = dstName ? validate(srcCell, dstName) : null;
   if (err1 || err2) {
     // 驗證失敗，還原
+    [srcCell, dstCell].forEach(cell => {
+      cell.classList.add("shake-error");
+      setTimeout(() => cell.classList.remove("shake-error"), 600);
+    });
     srcCell.textContent = srcName;
     dstCell.textContent = dstName;
     alert(err1 || err2);
+    // 支援撤銷
+    undoStack.push(() => {
+      srcCell.textContent = oldSrc;
+      dstCell.textContent = oldDst;
+    });
   }
 
   // 清除狀態與樣式
@@ -155,10 +212,16 @@ function handleDrop(dstCell) {
   dragSrcCell = null;
   dragSrcName = null;
   isDragging = false;
+  // 強制刷新週末摘要與選擇狀態
   renderWeekendSummary();
+  selectedName = "";
+  document.querySelectorAll("#staff-list > ul li").forEach(li => li.style.backgroundColor = "");
 }
 console.log("script.js 已經載入！")
 let selectedName = "";
+let _cachedVersionData = null;
+let retryCount = 0;
+const MAX_RETRIES = 20;
 
 // 被禁止填入的格子集，以 "YYYY-MM-DD|ZoneName" 為 key
 const forbiddenCells = new Set();
@@ -515,6 +578,17 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 加入手掌抓取游標樣式
   const style = document.createElement("style");
   style.textContent = `
+    @keyframes shake {
+      0% { transform: translateX(0); }
+      25% { transform: translateX(-4px); }
+      50% { transform: translateX(4px); }
+      75% { transform: translateX(-4px); }
+      100% { transform: translateX(0); }
+    }
+    .shake-error {
+      animation: shake 0.6s ease;
+      background-color: #f8d7da !important;
+    }
     body {
       font-family: 'LXGW WenKai Mono TC', monospace;
     }
@@ -693,7 +767,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 將排班版本區塊移到排班表下方
   const scheduleTable = document.getElementById("schedule");
   scheduleTable.insertAdjacentElement("afterend", versionsDiv);
- // 新增匯出CSV按鈕
+  // 新增匯出CSV按鈕
   const exportBtn = document.createElement("button");
   exportBtn.id = "export-csv-button";
   exportBtn.textContent = "匯出排班 (CSV)";
@@ -734,12 +808,24 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 下載 xlsx 檔
     XLSX.writeFile(wb, `schedule_${currentYear}_${String(currentMonth).padStart(2,"0")}.xlsx`);
   });
+  // 新增撤銷按鈕
+  const undoBtn = document.createElement("button");
+  undoBtn.textContent = "↩️ 撤銷上一步";
+  undoBtn.addEventListener("click", () => {
+    const last = undoStack.pop();
+    if (last) {
+      last();
+      renderWeekendSummary();
+    } else {
+      alert("沒有可撤銷的操作");
+    }
+  });
+  scheduleTable.insertAdjacentElement("afterend", undoBtn);
   // 儲存／載入排班版本到 localStorage
 versionsDiv.addEventListener("click", e => {
   const btn = e.target;
   const v = btn.dataset.version;
   const key = `schedule_v${v}`;
-  // 只處理我們定義的按鈕
   if (!btn.classList.contains("save-version") && !btn.classList.contains("load-version")) {
     return;
   }
@@ -756,68 +842,188 @@ versionsDiv.addEventListener("click", e => {
     // 3) 收集互斥設定 excl
     const excl = JSON.parse(JSON.stringify(mutuallyExclusivePairs));
 
-    // 4) 收集排班表 rows
-    const rows = Array.from(
-      document.querySelectorAll("#schedule tbody tr")
-    ).map(tr =>
-      Array.from(tr.querySelectorAll("td"))
-        .map(td => td.textContent.trim())
+    // 4) 收集排班表 rows（確保所有欄位皆存入，包含空格）
+    const tbody = document.querySelector("#schedule tbody");
+    const rows = Array.from(tbody.querySelectorAll("tr")).map(tr =>
+      Array.from(tr.querySelectorAll("td")).map(td => td.textContent.trim())
     );
 
     // 5) 一起存進 localStorage
     localStorage.setItem(key, JSON.stringify({ staff, off, excl, rows }));
     alert(`✅ 已儲存版本 ${v}`);
-
   } else if (btn.classList.contains("load-version")) {
     const raw = localStorage.getItem(key);
     if (!raw) {
       return alert(`⚠️ 版本 ${v} 尚未儲存`);
     }
 
-    // 解構出所有狀態
-    const { staff, off, excl, rows } = JSON.parse(raw);
+    // 加入等待 holidayDatabase 載入的 retry 機制
+    function loadScheduleVersion(data) {
+      if (!holidayDatabase || Object.keys(holidayDatabase).length === 0) {
+        if (retryCount < MAX_RETRIES) {
+          _cachedVersionData = data;
+          retryCount++;
+          setTimeout(() => loadScheduleVersion(_cachedVersionData), 300);
+        } else {
+          alert("❌ 假日資料載入失敗，請稍後再試");
+        }
+        return;
+      }
+      retryCount = 0; // 成功後重設
+      const versionData = data;
+      const { staff, off, excl, rows } = versionData;
 
-    // —— 還原人員清單 ——
-    const staffUl = document.querySelector("#staff-list > ul");
-    staffUl.innerHTML = "";
-    staff.forEach(name => {
-      const li = document.createElement("li");
-      li.textContent = name;
-      staffUl.appendChild(li);
-    });
-
-    // —— 還原休假設定 off ——
-    // 先清空原有，再灌入新值
-    Object.keys(reservedOffDates).forEach(k => delete reservedOffDates[k]);
-    Object.assign(reservedOffDates, off);
-
-    // —— 還原互斥設定 excl ——
-    mutuallyExclusivePairs.length = 0;
-    excl.forEach(pair => mutuallyExclusivePairs.push(pair));
-
-    // —— 還原排班表 rows ——
-    const tbody = document.querySelector("#schedule tbody");
-    tbody.innerHTML = "";
-    rows.forEach(cols => {
-      const tr = document.createElement("tr");
-      cols.forEach(text => {
-        const td = document.createElement("td");
-        td.textContent = text;
-        tr.appendChild(td);
+      // —— 還原人員清單 ——
+      const staffUl = document.querySelector("#staff-list > ul");
+      staffUl.innerHTML = "";
+      staff.forEach(name => {
+        const li = document.createElement("li");
+        li.textContent = name;
+        staffUl.appendChild(li);
       });
-      tbody.appendChild(tr);
-    });
 
-    // —— 重新啟用互動功能 & 更新 UI ——
-    enableDragDrop();
-    sortStaffList();
-    refreshOffStaffOptions();
-    renderOffDaysList();
-    refreshExclusionOptions();
-    renderExclusionList();
-    renderWeekendSummary();
+      // —— 還原休假設定 off ——
+      Object.keys(reservedOffDates).forEach(k => delete reservedOffDates[k]);
+      Object.assign(reservedOffDates, off);
 
-    alert(`✅ 已載入版本 ${v}`);
+      // —— 還原互斥設定 excl ——
+      mutuallyExclusivePairs.length = 0;
+      excl.forEach(pair => mutuallyExclusivePairs.push(pair));
+
+      // —— 還原排班表 rows ——
+      const tbody = document.querySelector("#schedule tbody");
+      tbody.innerHTML = "";
+      // 預備驗證函式，複用 handleDrop 內 validate
+      function validate(cell, name) {
+        const date = cell.parentElement.querySelector("td:first-child").textContent.split(" ")[0];
+        const zone = document.querySelectorAll("#schedule thead th")[cell.cellIndex].textContent;
+        // 禁用格檢查
+        if (forbiddenCells.has(`${date}|${zone}`)) return `${name} 在 ${date} ${zone} 已被禁止`;
+        // 權限檢查
+        const role = name.split(" ")[0];
+        if (!zonePermissions[role] || !zonePermissions[role].includes(zone)) return `${name} 無法排入 ${zone}`;
+        // 休假檢查
+        const off = reservedOffDates[name] || { weekdays: [], weekends: [] };
+        if (off.weekdays && off.weekdays.includes(date)) return `${name} 已設定 ${date} 為休假`;
+        if (off.weekends && off.weekends.includes(date)) return `${name} 已設定 ${date} 為休假`;
+        // 連續排班檢查
+        const [y, m, d] = date.split("-").map(n => parseInt(n, 10));
+        for (const offset of [-1,1]) {
+          const nd = new Date(y, m-1, d+offset);
+          const ndStr = `${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,"0")}-${String(nd.getDate()).padStart(2,"0")}`;
+          const neighRow = Array.from(document.querySelector("#schedule tbody").querySelectorAll("tr"))
+            .find(r => r.querySelector("td:first-child").textContent.split(" ")[0] === ndStr);
+          if (neighRow && Array.from(neighRow.querySelectorAll("td")).slice(1)
+              .some(c => c.textContent.trim() === name)) {
+            return `${name} 不能連續兩天`;
+          }
+        }
+        // 上限檢查
+        const limit = roleAssignmentLimits[role] || Infinity;
+        const count = Array.from(document.querySelector("#schedule tbody").querySelectorAll("tr"))
+          .reduce((sum, r) => sum + Array.from(r.querySelectorAll("td")).slice(1)
+            .filter(c => c.textContent.trim() === name).length, 0);
+        if (count > limit) return `${name} 超過本月上限`;
+        // 互斥檢查：同一天同一行若已有互斥對象，則排不進來
+        const rowNames = Array.from(cell.parentElement.querySelectorAll("td"))
+         .slice(1)
+         .map(c => c.textContent.trim())
+         .filter(n => n);
+        for (const [a, b] of mutuallyExclusivePairs) {
+          if (name === a && rowNames.includes(b)) {
+            return `${a} 與 ${b} 不能同一天排班`;
+          }
+          if (name === b && rowNames.includes(a)) {
+            return `${b} 與 ${a} 不能同一天排班`;
+          }
+        }
+        // 同日多區域檢查（同一天同人不可重複）
+        const rowCells = cell.parentElement.querySelectorAll("td");
+        for (let i = 1; i < rowCells.length; i++) {
+          if (i !== cell.cellIndex && rowCells[i].textContent.trim() === name) {
+            return `${name} 今日已在其他區域值班`;
+          }
+        }
+        // 完整週末保留數檢查：需至少保留2個完整週末
+        let freeWeekends = 0;
+        weekendPairs.forEach(([sat, sun]) => {
+          const satRow = Array.from(document.querySelector("#schedule tbody").querySelectorAll("tr"))
+            .find(r => r.querySelector("td:first-child").textContent.split(" ")[0] === sat);
+          const sunRow = sun && Array.from(document.querySelector("#schedule tbody").querySelectorAll("tr"))
+            .find(r => r.querySelector("td:first-child").textContent.split(" ")[0] === sun);
+          let worked = false;
+          [satRow, sunRow].forEach(r => {
+            if (r) {
+              Array.from(r.querySelectorAll("td")).slice(1)
+                .forEach(c => { if (c.textContent.trim() === name) worked = true; });
+            }
+          });
+          if (!worked) freeWeekends++;
+        });
+        // 如果此次移動後會導致 freeWeekends < 2，則不允許
+        // (假設此 cell 就是本週末其中一天)
+        const isWeekend = weekendPairs.some(([sat, sun]) => sat === date || sun === date);
+        if (isWeekend) {
+          // 如果這個週末對原本是 free，freeWeekends-- 再比較
+          const [sat, sun] = weekendPairs.find(p => p.includes(date));
+          let thisWorkedBefore = false;
+          [sat, sun].forEach(d => {
+            const r = Array.from(document.querySelector("#schedule tbody").querySelectorAll("tr"))
+              .find(r => r.querySelector("td:first-child").textContent.split(" ")[0] === d);
+            if (r) {
+              Array.from(r.querySelectorAll("td")).slice(1)
+                .forEach(c => { if (c.textContent.trim() === name) thisWorkedBefore = true; });
+            }
+          });
+          const potentialFree = thisWorkedBefore ? freeWeekends - 1 : freeWeekends;
+          if (potentialFree < 2) {
+            return `${name} 的空週末扣掉這個排班後會少於 2 個`;
+          }
+        }
+        return null;
+      }
+
+      // 假日清單
+      const holidayList = Object.keys(holidayDatabase).map(k => k.replace(/-/g,""));
+
+      rows.forEach(cols => {
+        const tr = document.createElement("tr");
+        cols.forEach((text, j) => {
+          const td = document.createElement("td");
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+
+        // 假日與週末樣式
+        const dateStr = cols[0].split(" ")[0];
+        const d = new Date(dateStr);
+        if (holidayList.includes(dateStr.replace(/-/g, ""))) tr.classList.add("holiday");
+        else if (d.getDay() === 0 || d.getDay() === 6) tr.classList.add("weekend");
+
+        tbody.appendChild(tr);
+
+        // 驗證每格內容限制
+        for (let i = 1; i < cols.length; i++) {
+          const name = cols[i];
+          const cell = tr.children[i];
+          if (name && validate(cell, name)) {
+            cell.classList.add("shake-error");
+            setTimeout(() => cell.classList.remove("shake-error"), 800);
+          }
+        }
+      });
+
+      enableDragDrop();
+      sortStaffList();
+      refreshOffStaffOptions();
+      renderOffDaysList();
+      refreshExclusionOptions();
+      renderExclusionList();
+      renderWeekendSummary();
+      alert(`✅ 已載入版本 ${v}`);
+    }
+    // 取得版本資料，進入 retry-aware 邏輯
+    loadScheduleVersion(JSON.parse(raw));
   }
 });
 
@@ -1002,7 +1208,10 @@ let weekendPairs = [];
 
 scheduleTableBody.addEventListener("click", (event) => {
   // 若正在拖曳，忽略 click 以防誤觸手動排班檢查
-  if (isDragging) return;
+  if (isDragging) {
+    setTimeout(() => { isDragging = false }, 100);  // 避免卡死
+    return;
+  }
   // 如果在禁用設定模式，點擊格子切換禁用狀態
   if (selectionMode && event.target.tagName === "TD" && event.target.cellIndex !== 0) {
     const date = event.target.parentElement.querySelector("td:first-child").textContent.split(" ")[0];
@@ -1376,25 +1585,20 @@ function renderWeekendSummary() {
 
   // 取得排班表所有列
   const rows = Array.from(scheduleTableBody.querySelectorAll("tr"));
-
   // 取得欄位名稱
   const headers = document.querySelectorAll("#schedule thead th");
-
   // 先計算總週末數
   const totalWeekends = weekendPairs.length;
-
   // 建立一個物件記錄每人保留的完整週末數
   const reservedCounts = {};
   staffNames.forEach(name => {
     reservedCounts[name] = 0;
   });
-
   // 對每個週末配對，檢查每個人是否保留該完整或單日週末
   weekendPairs.forEach(pair => {
     const [satDate, sunDate] = pair;
     const satRow = rows.find(r => r.querySelector("td").textContent.startsWith(satDate));
     const sunRow = sunDate ? rows.find(r => r.querySelector("td").textContent.startsWith(sunDate)) : null;
-
     staffNames.forEach(name => {
       if (satRow && sunRow) {
         // 完整週末
@@ -1431,12 +1635,46 @@ function renderWeekendSummary() {
       }
     });
   });
-
-  // 建立清單顯示每人保留完整週末數，並顯示總週末數與本月排班次數
+  // --- QOD 統計 ---
+  // 建立每人值班日期清單
+  const personDates = {};
+  staffNames.forEach(name => { personDates[name] = []; });
+  rows.forEach(row => {
+    const dateStr = row.querySelector("td:first-child").textContent.split(" ")[0];
+    const cells = Array.from(row.querySelectorAll("td")).slice(1);
+    cells.forEach(cell => {
+      const n = cell.textContent.trim();
+      if (n && personDates[n]) {
+        personDates[n].push(dateStr);
+      }
+    });
+  });
+  // 統計每人 QOD 次數，並即時視窗提醒
+  const personQod = {};
+  staffNames.forEach(name => {
+    const dts = personDates[name].map(ds => (new Date(ds)).getTime()).sort((a, b) => a - b);
+    let qodCount = 0;
+    for (let i = 1; i < dts.length; i++) {
+      // 相差兩天（172800000 ms）
+      if (dts[i] - dts[i - 1] === 2 * 24 * 60 * 60 * 1000) {
+        qodCount++;
+      }
+    }
+    personQod[name] = qodCount;
+    // 新增：QOD 超過 2 次即時視窗提示
+    if (qodCount > 2) {
+      alert(`${name} 隔日值班 ${qodCount} 次，超過 2 次！`);
+    }
+  });
+  // 建立清單顯示每人保留完整週末數，並顯示總週末數與本月排班次數與 QOD 次數
   const ul = document.createElement("ul");
   for (const [name, weekendFreeCount] of Object.entries(reservedCounts)) {
     const role = name.split(" ")[0];
-    const limit = roleAssignmentLimits[role] || Infinity;
+    let limit = maxShiftsPerPerson[name];
+    if (typeof limit !== "number") {
+      limit = roleAssignmentLimits[role] || 8;
+      maxShiftsPerPerson[name] = limit;
+    }
     // compute assigned count:
     const assignedCount = Array.from(scheduleTableBody.querySelectorAll("tr"))
       .reduce((sum, row) => {
@@ -1444,35 +1682,128 @@ function renderWeekendSummary() {
         return sum + cells.filter(c => c.textContent.trim() === name).length;
       }, 0);
     const remaining = limit - assignedCount;
+    const qodCount = personQod[name] || 0;
+    let text = `${name}：週末尚未排班 ${weekendFreeCount}/${totalWeekends}；本月排班 ${assignedCount}/${limit}（剩餘 ${remaining}）`;
+    text += `（隔日值班 ${qodCount} 次${qodCount > 2 ? "，超過 2 次！" : ""}）`;
     const li = document.createElement("li");
-    li.textContent = `${name}：週末尚未排班 ${weekendFreeCount}/${totalWeekends}；本月排班 ${assignedCount}/${limit}（剩餘 ${remaining}）`;
+    li.textContent = text;
+    // --- 新增：點兩下名字可選擇此人，進入調整模式 ---
+    li.style.cursor = "pointer";
+    li.ondblclick = () => {
+      if (!document.body.classList.contains("adjusting-mode")) return;
+      selectedPerson = name;
+      renderAdjustPanel();
+    };
     ul.appendChild(li);
   }
   weekendSummaryDiv.innerHTML = "<h3>週末 & 本月排班次數</h3>";
   weekendSummaryDiv.appendChild(ul);
 }
 
+// 顯示調整 panel
+function renderAdjustPanel() {
+  if (!selectedPerson) return;
+  // 取得 assigned/max/remaining
+  const name = selectedPerson;
+  const role = name.split(" ")[0];
+  let max = maxShiftsPerPerson[name];
+  if (typeof max !== "number") {
+    max = roleAssignmentLimits[role] || 8;
+    maxShiftsPerPerson[name] = max;
+  }
+  const assigned = Array.from(scheduleTableBody.querySelectorAll("tr"))
+    .reduce((sum, row) => {
+      const cells = Array.from(row.querySelectorAll("td")).slice(1);
+      return sum + cells.filter(c => c.textContent.trim() === name).length;
+    }, 0);
+  const remaining = max - assigned;
+  let block = document.getElementById("adjust-panel");
+  if (!block) {
+    block = document.createElement("div");
+    block.id = "adjust-panel";
+    document.body.appendChild(block);
+  }
+  block.innerHTML = `
+    <div style="margin-bottom:0.7em"><b>${name}</b></div>
+    <div>本月排班 ${assigned}/${max}（剩餘 ${remaining}）</div>
+    <button id="incMax">▲</button>
+    <button id="decMax">▼</button>
+    <button id="closeAdjust" style="float:right;">關閉</button>
+  `;
+  document.getElementById("incMax").onclick = () => {
+    maxShiftsPerPerson[selectedPerson]++;
+    validateSchedule();
+    renderAdjustPanel();
+    renderWeekendSummary();
+  };
+  document.getElementById("decMax").onclick = () => {
+    maxShiftsPerPerson[selectedPerson] = Math.max(0, maxShiftsPerPerson[selectedPerson] - 1);
+    validateSchedule();
+    renderAdjustPanel();
+    renderWeekendSummary();
+  };
+  document.getElementById("closeAdjust").onclick = () => {
+    block.remove();
+    selectedPerson = null;
+  };
+}
+
+// 驗證排班表所有格，若超過 maxShiftsPerPerson 則警告
+function validateSchedule() {
+  // 取得所有人
+  const staffItems = document.querySelectorAll("#staff-list > ul li");
+  const staffNames = Array.from(staffItems).map(li => li.textContent);
+  staffNames.forEach(name => {
+    const max = maxShiftsPerPerson[name] || roleAssignmentLimits[name.split(" ")[0]] || 8;
+    const assigned = Array.from(scheduleTableBody.querySelectorAll("tr"))
+      .reduce((sum, row) => {
+        const cells = Array.from(row.querySelectorAll("td")).slice(1);
+        return sum + cells.filter(c => c.textContent.trim() === name).length;
+      }, 0);
+    if (assigned > max) {
+      alert(`${name} 已超過排班上限 ${max} 次！`);
+    }
+  });
+}
+
 // 新增自動排班功能
 function autoAssign() {
-  // 清空既有排班
-  scheduleTableBody.querySelectorAll("tr").forEach(row => {
-    Array.from(row.querySelectorAll("td")).slice(1).forEach(cell => cell.textContent = "");
-  });
+  // 不再清空既有排班，保留手動填寫的資料
   // 重算週末配對
   weekendPairs = computeWeekendPairs(currentYear, currentMonth);
-
   // 取得人員與計次初始
   const staffItems = document.querySelectorAll("#staff-list > ul li");
   const staffNames = Array.from(staffItems).map(li => li.textContent);
   const assignedCount = {};
   staffNames.forEach(name => assignedCount[name] = 0);
+  // 計算目前已排次數（包含手動填寫者）
+  scheduleTableBody.querySelectorAll("tr").forEach(row => {
+    const cells = Array.from(row.querySelectorAll("td")).slice(1);
+    cells.forEach(cell => {
+      const name = cell.textContent.trim();
+      if (name) {
+        assignedCount[name] = (assignedCount[name] || 0) + 1;
+      }
+    });
+  });
   // track last assigned date for each person to prevent consecutive-day shifts
   const lastAssignedDate = {};
-
   // 建立欄位對應表：標題到 index
   const headerCells = Array.from(document.querySelectorAll("#schedule thead th"));
   const headers = headerCells.map(th => th.textContent);
-
+  // --- 建立每人已排班所有日期清單（for QOD） ---
+  const personDates = {};
+  staffNames.forEach(name => { personDates[name] = []; });
+  Array.from(scheduleTableBody.querySelectorAll("tr")).forEach(row => {
+    const dateStr = row.querySelector("td:first-child").textContent.split(" ")[0];
+    const cells = Array.from(row.querySelectorAll("td")).slice(1);
+    cells.forEach(cell => {
+      const n = cell.textContent.trim();
+      if (n && personDates[n]) {
+        personDates[n].push(dateStr);
+      }
+    });
+  });
   // 逐日、staff-centric分配，依照職稱優先區域
   scheduleTableBody.querySelectorAll("tr").forEach(row => {
     const dateStr = row.querySelector("td:first-child").textContent.split(" ")[0];
@@ -1496,13 +1827,23 @@ function autoAssign() {
       prev.setDate(prev.getDate() - 1);
       const prevStr = `${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,"0")}-${String(prev.getDate()).padStart(2,"0")}`;
       if (lastAssignedDate[name] === prevStr) return;
+      // ★★★ QOD 檢查：如果排入會造成 QOD 次數 > 2，則跳過
+      // 模擬排入這天後，該人所有已排日期 + 本日
+      const allDates = personDates[name].concat([dateStr]);
+      const dts = allDates.map(ds => (new Date(ds)).getTime()).sort((a, b) => a - b);
+      let qodCount = 0;
+      for (let i = 1; i < dts.length; i++) {
+        if (dts[i] - dts[i - 1] === 2 * 24 * 60 * 60 * 1000) {
+          qodCount++;
+        }
+      }
+      if (qodCount > 2) return;
       // pick first available zone in priority order
       const role = name.split(" ")[0];
       const priorities = roleZonePriority[role] || headers.slice(1);
-     for (const zoneName of priorities) {
+      for (const zoneName of priorities) {
         // ★ Debug: 印出優先順序
-        console.log(`trying zone: ${zoneName} for ${name} on ${dateStr}`)
-
+        // console.log(`trying zone: ${zoneName} for ${name} on ${dateStr}`)
         // 總值須最後填：若非總值區域仍有空格，先跳過總值
         if (zoneName === "總值") {
           const otherZones = headers.slice(1).filter(z => z !== "總值");
@@ -1518,12 +1859,38 @@ function autoAssign() {
               }
             });
           });
-          console.log("總值月檢查", otherZones, "hasEmptyInMonth", monthHasEmpty);
+          // console.log("總值月檢查", otherZones, "hasEmptyInMonth", monthHasEmpty);
           if (monthHasEmpty) continue;
         }
         // 若此格被禁用，略過
         const key = `${dateStr}|${zoneName}`;
         if (forbiddenCells.has(key)) continue;
+        // ✅ 檢查同日是否已在其他區域排班
+        const thisRowCells = Object.values(zoneCells);
+        if (thisRowCells.some(c => c.textContent.trim() === name)) {
+          continue;
+        }
+        // ✅ 檢查是否與前後一天連續排班
+        const [y, m, d] = dateStr.split("-").map(n => parseInt(n, 10));
+        let skipConsecutive = false;
+        for (const offset of [-1, 1]) {
+          const neigh = new Date(y, m - 1, d + offset);
+          const neighStr = `${neigh.getFullYear()}-${String(neigh.getMonth()+1).padStart(2,"0")}-${String(neigh.getDate()).padStart(2,"0")}`;
+          if (personDates[name].includes(neighStr)) {
+            skipConsecutive = true;
+            break;
+          }
+        }
+        if (skipConsecutive) continue;
+        // ✅ 檢查排入是否會讓完整週末少於 2 個
+        let tempDates = personDates[name].concat([dateStr]);
+        let free = 0;
+        weekendPairs.forEach(([sat, sun]) => {
+          const hasSat = tempDates.includes(sat);
+          const hasSun = sun ? tempDates.includes(sun) : false;
+          if (!hasSat && !hasSun) free++;
+        });
+        if (free < 2) continue;
         // 互斥檢查
         const assignedNames = Object.values(zoneCells)
           .map(c => c.textContent.trim())
@@ -1535,11 +1902,14 @@ function autoAssign() {
         }
         if (blocked) continue;
         const cell = zoneCells[zoneName];
+        // 只填入空白 cell，避免覆蓋手動排班
         if (cell && cell.textContent.trim() === "") {
           cell.textContent = name;
           assignedCount[name]++;
           assignedToday.add(name);
           lastAssignedDate[name] = dateStr;
+          // 更新 personDates[name] 以便後續 QOD 檢查
+          personDates[name].push(dateStr);
           break;
         }
       }
@@ -1588,6 +1958,8 @@ function enableDragDrop() {
         cell.style.opacity = "0.5";
         cell.setAttribute("dragging", "true");
         isDragging = true;
+        // 拖曳時自動選取該成員
+        selectedName = name;
       });
       cell.addEventListener("dragend", () => {
         cell.removeAttribute("dragging");
