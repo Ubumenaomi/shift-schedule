@@ -94,6 +94,24 @@ tr.holiday {
   color: #120404 !important;            /* 深紅文字 */
 }
 
-tr.weekend {
+#tr.weekend {
   background-color:  #e9967a 2 !important; /* 淡灰底 */
+}
+
+/* ─── 歡迎畫面樣式 ─── */
+#welcome-screen {
+  text-align: center;
+  padding: 80px 20px;
+  font-family: 'Arial', sans-serif;
+}
+#welcome-screen h1 {
+  font-size: 2.5em;
+}
+#welcome-screen h2 {
+  font-size: 2em;
+  color: #6666cc;
+}
+#welcome-screen p {
+  font-size: 1.2em;
+  margin: 10px 0;
 }

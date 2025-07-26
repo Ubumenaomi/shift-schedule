@@ -1,99 +1,89 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="UTF-8">
-  <title>排班系統</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-  <script type="module" src="firebase-login.js"></script>
-</head>
-<body>
-  <header>
-    <h1>排班系統 Shift Scheduler</h1>
-  </header>
-<main>
-  <div id="main-container">
-    <!-- 側邊欄：人員清單、休假設定、互斥設定、摘要 -->
-    <aside id="sidebar">
-      <!-- 人員清單 -->
-      <section id="staff-list">
-        <h2>人員清單</h2>
-        <ul><!-- JS 生成人員列表 --></ul>
-        <div id="add-staff">
-          <select id="staff-role">
-            <option value="PGY1">PGY1</option>
-            <option value="PGY2">PGY2</option>
-            <option value="R1">R1</option>
-            <option value="R2">R2</option>
-            <option value="R3">R3</option>
-            <option value="F1">F1</option>
-            <option value="F2">F2</option>
-            <option value="Vs">Vs</option>
-          </select>
-          <input type="text" id="new-staff-name" placeholder="輸入人員姓名">
-          <button id="add-staff-button">新增人員</button>
-        </div>
-      </section>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Welcome to Firebase Hosting</title>
 
-      <!-- 預班（休假）設定 -->
-      <section id="off-days">
-        <h3>預班（休假）設定</h3>
-        <label>選擇人員：
-          <select id="off-staff-select">
-            <option value="">-- 請選擇 --</option>
-          </select>
-        </label>
-        <label>預班日（最多 8 天）：
-          <input type="text" id="off-days-picker" placeholder="點此選擇日期" readonly />
-        </label>
-        <button id="set-off-days">儲存</button>
-        <div id="off-days-list"><!-- JS 渲染休假列表 --></div>
-      </section>
+    <!-- update the version number as needed -->
+    <script defer src="/__/firebase/12.0.0/firebase-app-compat.js"></script>
+    <!-- include only the Firebase features as you need -->
+    <script defer src="/__/firebase/12.0.0/firebase-auth-compat.js"></script>
+    <script defer src="/__/firebase/12.0.0/firebase-database-compat.js"></script>
+    <script defer src="/__/firebase/12.0.0/firebase-firestore-compat.js"></script>
+    <script defer src="/__/firebase/12.0.0/firebase-functions-compat.js"></script>
+    <script defer src="/__/firebase/12.0.0/firebase-messaging-compat.js"></script>
+    <script defer src="/__/firebase/12.0.0/firebase-storage-compat.js"></script>
+    <script defer src="/__/firebase/12.0.0/firebase-analytics-compat.js"></script>
+    <script defer src="/__/firebase/12.0.0/firebase-remote-config-compat.js"></script>
+    <script defer src="/__/firebase/12.0.0/firebase-performance-compat.js"></script>
+    <!-- 
+      initialize the SDK after all desired features are loaded, set useEmulator to false
+      to avoid connecting the SDK to running emulators.
+    -->
+    <script defer src="/__/firebase/init.js?useEmulator=true"></script>
 
-      <!-- 互斥排班設定 -->
-      <section id="exclusion-panel">
-        <h3>互斥排班設定</h3>
-        <!-- …內容… -->
-      </section>
+    <style media="screen">
+      body { background: #ECEFF1; color: rgba(0,0,0,0.87); font-family: Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
+      #message { background: white; max-width: 360px; margin: 100px auto 16px; padding: 32px 24px; border-radius: 3px; }
+      #message h2 { color: #ffa100; font-weight: bold; font-size: 16px; margin: 0 0 8px; }
+      #message h1 { font-size: 22px; font-weight: 300; color: rgba(0,0,0,0.6); margin: 0 0 16px;}
+      #message p { line-height: 140%; margin: 16px 0 24px; font-size: 14px; }
+      #message a { display: block; text-align: center; background: #039be5; text-transform: uppercase; text-decoration: none; color: white; padding: 16px; border-radius: 4px; }
+      #message, #message a { box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24); }
+      #load { color: rgba(0,0,0,0.4); text-align: center; font-size: 13px; }
+      @media (max-width: 600px) {
+        body, #message { margin-top: 0; background: white; box-shadow: none; }
+        body { border-top: 16px solid #ffa100; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="message">
+      <h2>Welcome</h2>
+      <h1>Firebase Hosting Setup Complete</h1>
+      <p>You're seeing this because you've successfully setup Firebase Hosting. Now it's time to go build something extraordinary!</p>
+      <a target="_blank" href="https://firebase.google.com/docs/hosting/">Open Hosting Documentation</a>
+    </div>
+    <p id="load">Firebase SDK Loading&hellip;</p>
 
-      <!-- 週末 & 本月排班次數摘要 -->
-      <section id="weekend-summary">
-        <!-- JS 渲染週末 & 本月摘要 -->
-      </section>
-    </aside>
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const loadEl = document.querySelector('#load');
+        // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
+        // // The Firebase SDK is initialized and available here!
+        //
+        // firebase.auth().onAuthStateChanged(user => { });
+        // firebase.database().ref('/path/to/ref').on('value', snapshot => { });
+        // firebase.firestore().doc('/foo/bar').get().then(() => { });
+        // firebase.functions().httpsCallable('yourFunction')().then(() => { });
+        // firebase.messaging().requestPermission().then(() => { });
+        // firebase.storage().ref('/path/to/ref').getDownloadURL().then(() => { });
+        // firebase.analytics(); // call to activate
+        // firebase.analytics().logEvent('tutorial_completed');
+        // firebase.performance(); // call to activate
+        //
+        // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
 
-    <!-- 主排班區 -->
-    <section id="schedule-container">
-      <!-- 排班控制列 -->
-      <div id="schedule-header">
-        年份：<input id="year" type="number" value="2025" style="width:4em;">
-        月份：<input id="month" type="number" value="7" style="width:3em;">
-        <button id="generate-button">產生排班表</button>
-        <button id="auto-schedule">自動排班</button>
-        <button id="set-disabled-button">設定禁用格</button>
-        <button id="export-excel">匯出排班（Excel）</button>
-        <button id="export-csv">匯出排班（CSV）</button>
-      </div>
-
-      <!-- 可捲動表格 -->
-      <div id="schedule-wrapper">
-        <table id="schedule">
-          <thead>
-            <tr>
-              <th>日期</th><th>6W</th><th>Zone A</th><th>Zone B</th>
-              <th>MICU1</th><th>MICU2</th><th>總值</th>
-            </tr>
-          </thead>
-          <tbody>
-            <!-- generateSchedule() 會動態填入 -->
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </div>
-</main>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-  <script src="script.js" defer></script>
-</body>
+        try {
+          let app = firebase.app();
+          let features = [
+            'auth', 
+            'database', 
+            'firestore',
+            'functions',
+            'messaging', 
+            'storage', 
+            'analytics', 
+            'remoteConfig',
+            'performance',
+          ].filter(feature => typeof app[feature] === 'function');
+          loadEl.textContent = `Firebase SDK loaded with ${features.join(', ')}`;
+        } catch (e) {
+          console.error(e);
+          loadEl.textContent = 'Error loading the Firebase SDK, check the console.';
+        }
+      });
+    </script>
+  </body>
 </html>
